@@ -19,7 +19,10 @@ Sensorius rodo:
 
 1. Pridėkite šią repozitoriją į HACS kaip "Custom Repository"
 2. Įdiekite "Day LT" integraciją per HACS
-3. Pridėkite į `configuration.yaml`:
-4. sensor:
-    platform: daylt
-    name: daylt_info # optional
+3. Pridėkite į `configuration.yaml`: yaml
+
+            sensor:
+            platform: daylt
+            name: daylt_info # optional
+
+4. Perkraukite Home Assistant
