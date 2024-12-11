@@ -1,10 +1,10 @@
 {
   "domain": "daylt",
   "name": "Day LT",
-  "documentation": "https://github.com/JUSERNAMEHERE/hass-daylt",
+  "documentation": "",
   "dependencies": [],
   "codeowners": [],
-  "requirements": ["beautifulsoup4==4.9.3", "requests==2.28.1"],
+  "requirements": ["beautifulsoup4==4.9.3"],
   "version": "1.0.0",
   "iot_class": "cloud_polling"
 }
