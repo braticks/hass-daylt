@@ -1,1 +1,1 @@
-
+"""Day.lt component."""
