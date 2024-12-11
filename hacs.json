@@ -1,0 +1,6 @@
+{
+    "name": "Day LT",
+    "render_readme": true,
+    "country": "LT",
+    "homeassistant": "2023.1.0"
+}
