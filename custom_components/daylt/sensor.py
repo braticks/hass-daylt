@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta, datetime, time
+from datetime import timedelta, datetime
 import voluptuous as vol
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import CONF_NAME
@@ -13,7 +13,6 @@ _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(hours=1)
 DEFAULT_NAME = "Day LT Info"
-UPDATE_TIME = time(hour=1, minute=0)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
@@ -45,15 +44,10 @@ class DayLtSensor(Entity):
 
     async def async_update(self):
         now = datetime.now()
-        current_time = now.time()
         current_date = now.date()
 
-        # Tikriname ar reikia atnaujinti
-        if (self._last_update_date is None or
-            (current_time >= UPDATE_TIME and 
-             current_time < (datetime.combine(current_date, UPDATE_TIME) + timedelta(minutes=5)).time() and
-             self._last_update_date != current_date)):
-            
+        # Tikriname ar reikia atnaujinti - tik kartą per dieną
+        if self._last_update_date != current_date:
             try:
                 session = async_get_clientsession(self._hass)
                 headers = {
