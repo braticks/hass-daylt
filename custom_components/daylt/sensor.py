@@ -98,9 +98,20 @@ class DayLtSensor(Entity):
                     self._attributes['savaites_diena'] = "Nerasta"
 
                 # Šventės
+                sventes = []
+                # Ieškome švenčių div'o
                 sventes_div = soup.find('div', class_='text-center text-xl mb-4')
-                if sventes_div and sventes_div.find_all('a'):
-                    sventes = [a.text.strip() for a in sventes_div.find_all('a')]
+                if sventes_div:
+                    # Ieškome visų span elementų su title="Šios dienos šventė"
+                    for span in sventes_div.find_all('span', title='Šios dienos šventė'):
+                        svente = span.text.replace('<small></small>', '').strip()
+                        if svente:
+                            sventes.append(svente)
+
+                # Pašaliname dublikatus ir tuščias reikšmes
+                sventes = list(set([s for s in sventes if s]))
+
+                if sventes:
                     self._attributes['sventes'] = ', '.join(sventes)
                 else:
                     self._attributes['sventes'] = "Nėra švenčių"
