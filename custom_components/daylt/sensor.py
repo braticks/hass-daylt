@@ -29,35 +29,6 @@ class DayLtSensor(Entity):
         self._attributes = {}
         self._last_update_date = None
         self._hass = hass
-        # Selektorių sąrašas skirtingiems elementams
-        self._selectors = {
-            'vardadieniai': [
-                ('p', {'class_': 'vardadieniai'}),
-                ('div', {'class_': 'names'}),
-            ],
-            'savaites_diena': [
-                ('span', {'title': 'Savaitės diena'}),
-                ('p', {'class_': 'weekday'}),
-                ('div', {'class_': 'text-center'}, 'span', {'class_': 'font-bold'}),
-            ],
-            'patarle': [
-                ('p', {'title': 'Patarlė'}),
-                ('div', {'class_': 'proverb'}),
-                ('div', {'class_': 'text-center text-sm mb-10'}, 'p'),
-            ],
-            'saule_info': [
-                ('div', {'class_': 'sun-data'}),
-                ('ul', {'class_': 'sun-info'}),
-            ],
-            'menulio_info': [
-                ('div', {'class_': 'moon-data'}),
-                ('ul', {'class_': 'moon-info'}),
-            ],
-            'sventes': [
-                ('div', {'class_': 'text-center text-xl mb-4'}),
-                ('div', {'class_': 'holidays'}),
-            ]
-        }
 
     @property
     def name(self):
@@ -70,27 +41,6 @@ class DayLtSensor(Entity):
     @property
     def extra_state_attributes(self):
         return self._attributes
-
-    async def _find_element(self, soup, selector_list):
-        """Bando rasti elementą naudojant skirtingus selektorius"""
-        for selector in selector_list:
-            try:
-                if len(selector) == 2:
-                    element = soup.find(selector[0], selector[1])
-                elif len(selector) == 4:
-                    parent = soup.find(selector[0], selector[1])
-                    if parent:
-                        element = parent.find(selector[2], selector[3])
-                    else:
-                        continue
-                else:
-                    continue
-
-                if element:
-                    return element
-            except Exception as e:
-                _LOGGER.debug(f"Klaida ieškant elemento su selektoriumi {selector}: {e}")
-        return None
 
     async def _clean_text(self, text):
         """Išvalo tekstą nuo nereikalingų simbolių"""
@@ -121,66 +71,68 @@ class DayLtSensor(Entity):
                 soup = BeautifulSoup(html, 'html.parser')
                 
                 # Vardadieniai
-                vardadieniai_el = await self._find_element(soup, self._selectors['vardadieniai'])
-                if vardadieniai_el:
-                    vardadieniai = [await self._clean_text(a.text) for a in vardadieniai_el.find_all('a')]
+                vardadieniai_div = soup.find('p', class_='vardadieniai')
+                if vardadieniai_div:
+                    vardadieniai = [await self._clean_text(a.text) for a in vardadieniai_div.find_all('a')]
                     self._attributes['vardadieniai'] = ', '.join(vardadieniai)
                 else:
-                    _LOGGER.debug("Nepavyko rasti vardadienių")
                     self._attributes['vardadieniai'] = "Nerasta"
 
                 # Saulės informacija
-                saule_info = await self._find_element(soup, self._selectors['saule_info'])
+                saule_info = soup.find('div', class_='sun-data')
                 if saule_info:
                     saule_items = saule_info.find_all('li')
                     if len(saule_items) >= 3:
-                        self._attributes['saule_teka'] = await self._clean_text(saule_items[0].text.replace('teka', ''))
-                        self._attributes['saule_leidziasi'] = await self._clean_text(saule_items[1].text.replace('leidžiasi', ''))
-                        self._attributes['dienos_ilgumas'] = await self._clean_text(saule_items[2].text.replace('ilgumas', ''))
+                        teka = await self._clean_text(saule_items[0].text.replace('teka', ''))
+                        leidziasi = await self._clean_text(saule_items[1].text.replace('leidžiasi', ''))
+                        ilgumas = await self._clean_text(saule_items[2].text.replace('ilgumas', ''))
+                        
+                        self._attributes['saule_teka'] = teka
+                        self._attributes['saule_leidziasi'] = leidziasi
+                        self._attributes['dienos_ilgumas'] = ilgumas
                 else:
-                    _LOGGER.debug("Nepavyko rasti saulės informacijos")
                     self._attributes['saule_teka'] = "Nerasta"
                     self._attributes['saule_leidziasi'] = "Nerasta"
                     self._attributes['dienos_ilgumas'] = "Nerasta"
 
                 # Savaitės diena
-                savaites_diena_el = await self._find_element(soup, self._selectors['savaites_diena'])
-                if savaites_diena_el:
-                    diena_text = savaites_diena_el.find('a').text if savaites_diena_el.find('a') else savaites_diena_el.text
-                    self._attributes['savaites_diena'] = await self._clean_text(diena_text)
+                savaites_diena = soup.find('p', class_='text-3xl font-semibold mt-2')
+                if not savaites_diena:
+                    savaites_diena = soup.find('span', title='Savaitės diena')
+                if savaites_diena and savaites_diena.find('a'):
+                    self._attributes['savaites_diena'] = await self._clean_text(savaites_diena.find('a').text)
                 else:
-                    _LOGGER.debug("Nepavyko rasti savaitės dienos")
                     self._attributes['savaites_diena'] = "Nerasta"
 
                 # Patarlė
-                patarle_el = await self._find_element(soup, self._selectors['patarle'])
-                if patarle_el:
-                    self._attributes['patarle'] = await self._clean_text(patarle_el.text)
+                patarle = soup.find('p', title='Patarlė')
+                if not patarle:
+                    patarle = soup.find('div', class_='text-center text-sm mb-10').find('p')
+                if patarle:
+                    self._attributes['patarle'] = await self._clean_text(patarle.text)
                 else:
-                    _LOGGER.debug("Nepavyko rasti patarlės")
                     self._attributes['patarle'] = "Nerasta"
 
                 # Mėnulio informacija
-                menulio_info = await self._find_element(soup, self._selectors['menulio_info'])
+                menulio_info = soup.find('div', class_='moon-data')
                 if menulio_info:
                     menulio_items = menulio_info.find_all('li')
                     if len(menulio_items) >= 2:
                         self._attributes['menulio_faze'] = await self._clean_text(menulio_items[0].text)
                         self._attributes['menulio_diena'] = await self._clean_text(menulio_items[1].text)
                 else:
-                    _LOGGER.debug("Nepavyko rasti mėnulio informacijos")
                     self._attributes['menulio_faze'] = "Nerasta"
                     self._attributes['menulio_diena'] = "Nerasta"
 
                 # Šventės
                 sventes = []
-                sventes_el = await self._find_element(soup, self._selectors['sventes'])
-                if sventes_el:
-                    for span in sventes_el.find_all('span', title='Šios dienos šventė'):
+                sventes_div = soup.find('div', class_='text-center text-xl mb-4')
+                if sventes_div:
+                    for span in sventes_div.find_all('span', title='Šios dienos šventė'):
                         svente = await self._clean_text(span.text.replace('<small></small>', ''))
                         if svente:
                             sventes.append(svente)
-                
+
                 if sventes:
                     self._attributes['sventes'] = ', '.join(sventes)
                 else:
