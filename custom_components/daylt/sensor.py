@@ -70,6 +70,28 @@ class DayLtSensor(Entity):
 
                 soup = BeautifulSoup(html, 'html.parser')
                 
+                # Check for red day
+                is_red_day = False
+
+                # Check for red styling in day number
+                day_number = soup.find('p', class_='text-9xl font-bold')
+                if day_number and 'style' in day_number.attrs and 'color: red' in day_number['style']:
+                    is_red_day = True
+
+                # Check for red styling in weekday
+                weekday = soup.find('span', title='Savaitės diena')
+                if weekday and weekday.find('a') and 'style' in weekday.find('a').attrs and 'color: red' in weekday.find('a')['style']:
+                    is_red_day = True
+
+                # Check for red holidays
+                sventes_div = soup.find('div', class_='text-center text-xl mb-4')
+                if sventes_div:
+                    red_holidays = sventes_div.find_all('a', style=lambda value: value and 'color: red' in value)
+                    if red_holidays:
+                        is_red_day = True
+
+                self._attributes['is_red_day'] = is_red_day
+
                 # Vardadieniai
                 vardadieniai_div = soup.find('p', class_='vardadieniai')
                 if vardadieniai_div:
