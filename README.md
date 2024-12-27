@@ -17,7 +17,7 @@ Sensorius rodo:
 
 ## Diegimas
 
-1. Pridėkite šią repozitoriją į HACS kaip "Custom Repository"
+1. Pridėkite šią repozitoriją https://github.com/braticks/hass-daylt į HACS kaip "Custom Repository"
 2. Įdiekite "Day LT" integraciją per HACS
 3. Pridėkite į `configuration.yaml`: yaml
 
