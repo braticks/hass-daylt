@@ -163,6 +163,33 @@ class DayLtSensor(Entity):
                 self._state = "OK"
                 self._last_update_date = current_date
                 
+                # Zodiako ženklas ir ikona
+                zodiakas = soup.find('div', class_='flex-1 flex items-center')
+                if zodiakas and zodiakas.find('a'):
+                    zodiakas_text = zodiakas.find('span').text
+                    zodiakas_img = zodiakas.find('img')
+                    self._attributes['zodiakas'] = await self._clean_text(zodiakas_text)
+                    if zodiakas_img and 'src' in zodiakas_img.attrs:
+                        self._attributes['zodiakas_icon'] = 'https://day.lt/' + zodiakas_img['src']
+                else:
+                    self._attributes['zodiakas'] = "Nerasta"
+                    self._attributes['zodiakas_icon'] = "Nerasta"
+
+                # Kinų zodiakas ir ikona
+                kinu_zodiakas = soup.find('div', class_='flex-1 flex items-center justify-center')
+                if kinu_zodiakas and kinu_zodiakas.find('a'):
+                    kinu_zodiakas_text = kinu_zodiakas.find('span').text
+                    kinu_zodiakas_img = kinu_zodiakas.find('img')
+                    self._attributes['kinu_zodiakas'] = await self._clean_text(kinu_zodiakas_text)
+                    if kinu_zodiakas_img and 'src' in kinu_zodiakas_img.attrs:
+                        self._attributes['kinu_zodiakas_icon'] = 'https://day.lt/' + kinu_zodiakas_img['src']
+                else:
+                    self._attributes['kinu_zodiakas'] = "Nerasta"
+                    self._attributes['kinu_zodiakas_icon'] = "Nerasta"
+
+                self._state = "OK"
+                self._last_update_date = current_date
+                
             except Exception as error:
                 _LOGGER.error(f"Klaida gaunant duomenis: {error}")
                 self._state = "Error"
