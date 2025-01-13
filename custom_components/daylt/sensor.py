@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import timedelta, datetime
 import voluptuous as vol
 from homeassistant.components.sensor import PLATFORM_SCHEMA
@@ -150,7 +151,7 @@ class DayLtSensor(Entity):
                 sventes = []
                 sventes_div = soup.find('div', class_='text-center text-xl mb-4')
                 if sventes_div:
-                    for span in sventes_div.find_all('span', title='Šios dienos šventė'):
+                    for span in sventes_div.find_all('span', title=re.compile(r'(Šios dienos šventė|Keliama LR valstybinė vėliava)')):
                         svente = await self._clean_text(span.text.replace('<small></small>', ''))
                         if svente:
                             sventes.append(svente)
