@@ -150,15 +150,25 @@ class DayLtSensor(Entity):
                 sventes = []
                 sventes_div = soup.find('div', class_='text-center text-xl mb-4')
                 if sventes_div:
-                    for span in sventes_div.find_all('span', title='Šios dienos šventė'):
-                        svente = await self._clean_text(span.text.replace('<small></small>', ''))
-                        if svente:
-                            sventes.append(svente)
+                    # Ieškome švenčių pagal <p> elementą
+                    sventes_p = sventes_div.find('p')
+                    if sventes_p:
+                        # Ieškome tik tiesioginių <a> elementų
+                        for link in sventes_p.find_all('a', recursive=False):
+                            svente = await self._clean_text(link.text)
+                            if svente:
+                                sventes.append(svente)
+                        
+                        # Ieškome tik tiesioginių <span> elementų (kurie nėra <a> viduje)
+                        for span in sventes_p.find_all('span', recursive=False):
+                            svente = await self._clean_text(span.text)
+                            if svente:
+                                sventes.append(svente)
 
                 if sventes:
                     self._attributes['sventes'] = ', '.join(sventes)
                 else:
-                    self._attributes['sventes'] = "Nėra švenčių"
+                    self._attributes['sventes'] = ""
 
                 self._state = "OK"
                 self._last_update_date = current_date
