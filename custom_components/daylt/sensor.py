@@ -19,11 +19,15 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 })
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
+    """Set up the DayLt sensor platform."""
     name = config.get(CONF_NAME)
     async_add_entities([DayLtSensor(hass, name)], True)
 
 class DayLtSensor(Entity):
+    """Representation of the DayLt sensor."""
+
     def __init__(self, hass, name):
+        """Initialize the sensor."""
         self._name = name
         self._state = None
         self._attributes = {}
@@ -32,174 +36,186 @@ class DayLtSensor(Entity):
 
     @property
     def name(self):
+        """Return the name of the sensor."""
         return self._name
 
     @property
     def state(self):
+        """Return the state of the sensor."""
         return self._state
 
     @property
     def extra_state_attributes(self):
+        """Return extra state attributes."""
         return self._attributes
 
-    async def _clean_text(self, text):
-        """Išvalo tekstą nuo nereikalingų simbolių"""
-        if text:
-            return text.strip().encode('utf-8').decode('utf-8')
-        return text
-
     async def async_update(self):
-        now = datetime.now()
-        current_date = now.date()
+        """Fetch new data for the sensor."""
+        try:
+            if self._last_update_date == datetime.now().date():
+                return  # No need to update
 
-        if self._last_update_date != current_date:
-            try:
-                session = async_get_clientsession(self._hass)
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            session = async_get_clientsession(self._hass)
+            async with async_timeout.timeout(10):
+                response = await session.get('https://day.lt', headers={
+                    'User-Agent': 'Mozilla/5.0 (HomeAssistant Integration)'
+                })
+                response.raise_for_status()
+                html = await response.text()
+
+            soup = BeautifulSoup(html, 'html.parser')
+            self._parse_data(soup)
+            self._state = "OK"
+            self._last_update_date = datetime.now().date()
+
+        except Exception as e:
+            _LOGGER.error("Error fetching data: %s", e, exc_info=True)
+            self._state = "Error"
+
+    def _parse_data(self, soup):
+        """Parse the HTML data and update attributes."""
+        # Extract zodiac data
+        zodiac, zodiac_icon = self._extract_zodiac(soup)
+        self._attributes['zodiakas'] = zodiac
+        self._attributes['zodiakas_icon'] = zodiac_icon
+        
+        # Extract chinese zodiac data
+        chinese_zodiac, chinese_zodiac_icon = self._extract_chinese_zodiac(soup)
+        self._attributes['kinu_zodiakas'] = chinese_zodiac
+        self._attributes['kinu_zodiakas_icon'] = chinese_zodiac_icon
+        
+        # Extract vardadieniai and sventes
+        special_days = self._extract_special_days(soup)
+        self._attributes['vardadieniai'] = special_days['vardadieniai']
+        self._attributes['sventes'] = special_days['sventes']
+
+        self._attributes['is_red_day'] = self._extract_is_red_day(soup)
+        self._attributes['savaites_diena'] = self._extract_weekday(soup)
+        self._attributes['patarle'] = self._extract_proverb(soup)
+        # Extract Solar and Moon data
+        self._attributes.update(self._extract_solar_data(soup))
+        self._attributes.update(self._extract_moon_data(soup))
+
+    def _extract_is_red_day(self, soup):
+        """Determine if today is a red day."""
+        try:
+            day_number = soup.find('p', class_='text-9xl font-bold')
+            weekday = soup.find('span', title='Savaitės diena')
+            holidays = soup.find('div', class_='text-center text-xl mb-4')
+
+            if day_number and 'style' in day_number.attrs and 'color: red' in day_number['style']:
+                return True
+            if weekday and weekday.find('a') and 'style' in weekday.find('a').attrs and 'color: red' in weekday.find('a')['style']:
+                return True
+            if holidays and holidays.find_all('a', style=lambda value: value and 'color: red' in value):
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _extract_solar_data(self, soup):
+        """Extract solar data (sunrise, sunset, day length)."""
+        solar_data = soup.find('div', class_='sun-data')
+        if solar_data:
+            items = solar_data.find_all('li')
+            if len(items) >= 3:
+                return {
+                    'saule_teka': self._clean_text(items[0].text.replace('teka', '')),
+                    'saule_leidziasi': self._clean_text(items[1].text.replace('leidžiasi', '')),
+                    'dienos_ilgumas': self._clean_text(items[2].text.replace('ilgumas', ''))
                 }
+        return {'saule_teka': "Nerasta", 'saule_leidziasi': "Nerasta", 'dienos_ilgumas': "Nerasta"}
 
-                async with async_timeout.timeout(10):
-                    async with session.get('https://day.lt', headers=headers) as response:
-                        if response.status != 200:
-                            _LOGGER.error(f"Svetainė neatsakė: {response.status}")
-                            self._state = "Error"
-                            return
-                        
-                        html = await response.text(encoding='utf-8')
+    def _extract_moon_data(self, soup):
+        """Extract moon phase and day."""
+        moon_data = soup.find('div', class_='moon-data')
+        if moon_data:
+            items = moon_data.find_all('li')
+            if len(items) >= 2:
+                return {
+                    'menulio_faze': self._clean_text(items[0].text),
+                    'menulio_diena': self._clean_text(items[1].text)
+                }
+        return {'menulio_faze': "Nerasta", 'menulio_diena': "Nerasta"}
 
-                soup = BeautifulSoup(html, 'html.parser')
-                
-                # Check for red day
-                is_red_day = False
+    def _extract_special_days(self, soup):
+        """Extract vardadieniai (name days) and sventes (holidays)."""
+        vardadieniai = "Nerasta"
+        sventes = "Nerasta"
 
-                # Check for red styling in day number
-                day_number = soup.find('p', class_='text-9xl font-bold')
-                if day_number and 'style' in day_number.attrs and 'color: red' in day_number['style']:
-                    is_red_day = True
+        try:
+            # Extract vardadieniai (name days)
+            vardadieniai_div = soup.find('p', class_='vardadieniai')
+            if vardadieniai_div:
+                vardadieniai_list = [self._clean_text(a.text) for a in vardadieniai_div.find_all('a')]
+                vardadieniai = ', '.join(vardadieniai_list) if vardadieniai_list else "Nerasta"
 
-                # Check for red styling in weekday
+            # Extract sventes (holidays)
+            sventes = []
+            sventes_div = soup.find('div', class_='text-center text-xl mb-4')
+            if sventes_div:
+                sventes_links = sventes_div.find_all('a')
+                for link in sventes_links:
+                    svente_name = link.get_text(strip=True)  # Extract holiday name
+                    sventes.append(svente_name)
+            # Convert list of holidays to string or set as 'Nerasta'
+            sventes = ', '.join(sventes) if sventes else "Nerasta"
+
+        except Exception as e:
+            _LOGGER.warning("Error parsing special days: %s", e)
+
+        return {'vardadieniai': vardadieniai, 'sventes': sventes}
+
+    def _extract_weekday(self, soup):
+        """Extract the day of the week."""
+        try:
+            weekday = soup.find('p', class_='text-3xl font-semibold mt-2')
+            if not weekday:
                 weekday = soup.find('span', title='Savaitės diena')
-                if weekday and weekday.find('a') and 'style' in weekday.find('a').attrs and 'color: red' in weekday.find('a')['style']:
-                    is_red_day = True
+            if weekday and weekday.find('a'):
+                return self._clean_text(weekday.find('a').text)
+        except Exception as e:
+            _LOGGER.warning("Error parsing weekday: %s", e)
+        return "Nerasta"
 
-                # Check for red holidays
-                sventes_div = soup.find('div', class_='text-center text-xl mb-4')
-                if sventes_div:
-                    red_holidays = sventes_div.find_all('a', style=lambda value: value and 'color: red' in value)
-                    if red_holidays:
-                        is_red_day = True
+    def _extract_proverb(self, soup):
+        """Extract the proverb."""
+        try:
+            proverb = soup.find('p', title='Patarlė')
+            if not proverb:
+                proverb = soup.find('div', class_='text-center text-sm mb-10').find('p')
+            if proverb:
+                return self._clean_text(proverb.text)
+        except Exception as e:
+            _LOGGER.warning("Error parsing proverb: %s", e)
+        return "Nerasta"
 
-                self._attributes['is_red_day'] = is_red_day
+    def _extract_zodiac(self, soup):
+        """Extract Western zodiac sign and icon."""
+        try:
+            zodiac = soup.find('div', class_='flex-1 flex items-center')
+            if zodiac:
+                zodiac_text = zodiac.find('span').text if zodiac.find('span') else "Nerasta"
+                zodiac_img = zodiac.find('img')['src'] if zodiac.find('img') and 'src' in zodiac.find('img').attrs else None
+                zodiac_icon = f"https://day.lt/{zodiac_img}" if zodiac_img else "Nerasta"
+                return zodiac_text, zodiac_icon
+        except Exception as e:
+            _LOGGER.warning("Error parsing zodiac: %s", e)
+        return "Nerasta", "Nerasta"
 
-                # Vardadieniai
-                vardadieniai_div = soup.find('p', class_='vardadieniai')
-                if vardadieniai_div:
-                    vardadieniai = [await self._clean_text(a.text) for a in vardadieniai_div.find_all('a')]
-                    self._attributes['vardadieniai'] = ', '.join(vardadieniai)
-                else:
-                    self._attributes['vardadieniai'] = "Nerasta"
+    def _extract_chinese_zodiac(self, soup):
+        """Extract Chinese zodiac sign and icon."""
+        try:
+            chinese_zodiac = soup.find('div', class_='flex-1 flex items-center justify-center')
+            if chinese_zodiac:
+                chinese_zodiac_text = chinese_zodiac.find('span').text if chinese_zodiac.find('span') else "Nerasta"
+                chinese_zodiac_img = chinese_zodiac.find('img')['src'] if chinese_zodiac.find('img') and 'src' in chinese_zodiac.find('img').attrs else None
+                chinese_zodiac_icon = f"https://day.lt/{chinese_zodiac_img}" if chinese_zodiac_img else "Nerasta"
+                return chinese_zodiac_text, chinese_zodiac_icon
+        except Exception as e:
+            _LOGGER.warning("Error parsing Chinese zodiac: %s", e)
+        return "Nerasta", "Nerasta"
 
-                # Saulės informacija
-                saule_info = soup.find('div', class_='sun-data')
-                if saule_info:
-                    saule_items = saule_info.find_all('li')
-                    if len(saule_items) >= 3:
-                        teka = await self._clean_text(saule_items[0].text.replace('teka', ''))
-                        leidziasi = await self._clean_text(saule_items[1].text.replace('leidžiasi', ''))
-                        ilgumas = await self._clean_text(saule_items[2].text.replace('ilgumas', ''))
-                        
-                        self._attributes['saule_teka'] = teka
-                        self._attributes['saule_leidziasi'] = leidziasi
-                        self._attributes['dienos_ilgumas'] = ilgumas
-                else:
-                    self._attributes['saule_teka'] = "Nerasta"
-                    self._attributes['saule_leidziasi'] = "Nerasta"
-                    self._attributes['dienos_ilgumas'] = "Nerasta"
-
-                # Savaitės diena
-                savaites_diena = soup.find('p', class_='text-3xl font-semibold mt-2')
-                if not savaites_diena:
-                    savaites_diena = soup.find('span', title='Savaitės diena')
-                if savaites_diena and savaites_diena.find('a'):
-                    self._attributes['savaites_diena'] = await self._clean_text(savaites_diena.find('a').text)
-                else:
-                    self._attributes['savaites_diena'] = "Nerasta"
-
-                # Patarlė
-                patarle = soup.find('p', title='Patarlė')
-                if not patarle:
-                    patarle = soup.find('div', class_='text-center text-sm mb-10').find('p')
-                if patarle:
-                    self._attributes['patarle'] = await self._clean_text(patarle.text)
-                else:
-                    self._attributes['patarle'] = "Nerasta"
-
-                # Mėnulio informacija
-                menulio_info = soup.find('div', class_='moon-data')
-                if menulio_info:
-                    menulio_items = menulio_info.find_all('li')
-                    if len(menulio_items) >= 2:
-                        self._attributes['menulio_faze'] = await self._clean_text(menulio_items[0].text)
-                        self._attributes['menulio_diena'] = await self._clean_text(menulio_items[1].text)
-                else:
-                    self._attributes['menulio_faze'] = "Nerasta"
-                    self._attributes['menulio_diena'] = "Nerasta"
-
-                # Šventės
-                sventes = []
-                sventes_div = soup.find('div', class_='text-center text-xl mb-4')
-                if sventes_div:
-                    # Ieškome švenčių pagal <p> elementą
-                    sventes_p = sventes_div.find('p')
-                    if sventes_p:
-                        # Ieškome tik tiesioginių <a> elementų
-                        for link in sventes_p.find_all('a', recursive=False):
-                            svente = await self._clean_text(link.text)
-                            if svente:
-                                sventes.append(svente)
-                        
-                        # Ieškome tik tiesioginių <span> elementų (kurie nėra <a> viduje)
-                        for span in sventes_p.find_all('span', recursive=False):
-                            svente = await self._clean_text(span.text)
-                            if svente:
-                                sventes.append(svente)
-
-                if sventes:
-                    self._attributes['sventes'] = ', '.join(sventes)
-                else:
-                    self._attributes['sventes'] = ""
-
-                self._state = "OK"
-                self._last_update_date = current_date
-                
-                # Zodiako ženklas ir ikona
-                zodiakas = soup.find('div', class_='flex-1 flex items-center')
-                if zodiakas and zodiakas.find('a'):
-                    zodiakas_text = zodiakas.find('span').text
-                    zodiakas_img = zodiakas.find('img')
-                    self._attributes['zodiakas'] = await self._clean_text(zodiakas_text)
-                    if zodiakas_img and 'src' in zodiakas_img.attrs:
-                        self._attributes['zodiakas_icon'] = 'https://day.lt/' + zodiakas_img['src']
-                else:
-                    self._attributes['zodiakas'] = "Nerasta"
-                    self._attributes['zodiakas_icon'] = "Nerasta"
-
-                # Kinų zodiakas ir ikona
-                kinu_zodiakas = soup.find('div', class_='flex-1 flex items-center justify-center')
-                if kinu_zodiakas and kinu_zodiakas.find('a'):
-                    kinu_zodiakas_text = kinu_zodiakas.find('span').text
-                    kinu_zodiakas_img = kinu_zodiakas.find('img')
-                    self._attributes['kinu_zodiakas'] = await self._clean_text(kinu_zodiakas_text)
-                    if kinu_zodiakas_img and 'src' in kinu_zodiakas_img.attrs:
-                        self._attributes['kinu_zodiakas_icon'] = 'https://day.lt/' + kinu_zodiakas_img['src']
-                else:
-                    self._attributes['kinu_zodiakas'] = "Nerasta"
-                    self._attributes['kinu_zodiakas_icon'] = "Nerasta"
-
-                self._state = "OK"
-                self._last_update_date = current_date
-                
-            except Exception as error:
-                _LOGGER.error(f"Klaida gaunant duomenis: {error}")
-                self._state = "Error"
+    def _clean_text(self, text):
+        """Clean and normalize text."""
+        return text.strip() if text else "Nerasta"
