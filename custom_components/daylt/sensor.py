@@ -151,20 +151,15 @@ class DayLtSensor(Entity):
                 vardadieniai = ', '.join(vardadieniai_list) if vardadieniai_list else "Nerasta"
 
             # Extract sventes (holidays)
+            sventes = []
             sventes_div = soup.find('div', class_='text-center text-xl mb-4')
             if sventes_div:
-                sventes_list = []
-                # Find direct <a> elements for holidays
-                for link in sventes_div.find_all('a', recursive=False):
-                    holiday = self._clean_text(link.text)
-                    if holiday:
-                        sventes_list.append(holiday)
-                # Find direct <span> elements for holidays
-                for span in sventes_div.find_all('span', recursive=False):
-                    holiday = self._clean_text(span.text)
-                    if holiday:
-                        sventes_list.append(holiday)
-                sventes = ', '.join(sventes_list) if sventes_list else "Nerasta"
+                sventes_links = sventes_div.find_all('a')
+                for link in sventes_links:
+                    svente_name = link.get_text(strip=True)  # Extract holiday name
+                    sventes.append(svente_name)
+            # Convert list of holidays to string or set as 'Nerasta'
+            sventes = ', '.join(sventes) if sventes else "Nerasta"
 
         except Exception as e:
             _LOGGER.warning("Error parsing special days: %s", e)
