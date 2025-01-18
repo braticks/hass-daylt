@@ -159,7 +159,7 @@ class DayLtSensor(Entity):
                     svente_name = link.get_text(strip=True)  # Extract holiday name
                     sventes.append(svente_name)
             # Convert list of holidays to string or set as 'Nerasta'
-            sventes = ', '.join(sventes) if sventes else "Nerasta"
+            sventes = ', '.join(sventes) if sventes else ""
 
         except Exception as e:
             _LOGGER.warning("Error parsing special days: %s", e)
