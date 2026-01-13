@@ -1,7 +1,4 @@
 {
   "name": "Day LT",
-  "render_readme": true,
-  "filename": "ha-lithuanian-date-card.js",
-  "icon": "source1.png",
-  "content_in_root": true
+  "render_readme": true
 }
